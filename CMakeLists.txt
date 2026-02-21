@@ -1,8 +1,14 @@
 cmake_minimum_required(VERSION 3.10)
-project(7zlite C)
+project(7zlite VERSION 1.0.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+
+# CPACK configuration
+set(CPACK_PACKAGE_NAME "7zlite")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_DESCRIPTION "A lightweight 7z archive tool with hard link and symlink support")
+set(CPACK_PACKAGE_CONTACT "7zLite Project")
 
 # Platform detection
 if(WIN32)
@@ -110,3 +116,31 @@ if(CMAKE_BUILD_TYPE MATCHES Release)
         target_compile_options(7zlite PRIVATE -O3)
     endif()
 endif()
+
+# CPACK configuration
+set(CPACK_PACKAGE_VENDOR "7zLite")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/caomengxuan666/7zlite")
+
+# Linux-specific CPACK settings
+if(UNIX AND NOT APPLE)
+    set(CPACK_GENERATOR "TGZ;DEB;RPM")
+    set(CPACK_SOURCE_GENERATOR "TGZ")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+    set(CPACK_RPM_PACKAGE_LICENSE "Public Domain")
+    set(CPACK_RPM_PACKAGE_GROUP "Applications/Archiving")
+    set(CPACK_PACKAGE_EXECUTABLES ${CMAKE_INSTALL_PREFIX}/bin)
+    install(TARGETS 7zlite DESTINATION bin)
+endif()
+
+# Windows-specific CPACK settings
+if(WIN32)
+    set(CPACK_GENERATOR "ZIP;NSIS")
+    set(CPACK_NSIS_DISPLAY_NAME "7zLite")
+    set(CPACK_NSIS_PACKAGE_NAME "7zLite")
+    set(CPACK_NSIS_CONTACT "7zLite Project")
+    set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/caomengxuan666/7zlite")
+    install(TARGETS 7zlite DESTINATION .)
+endif()
+
+include(CPack)
