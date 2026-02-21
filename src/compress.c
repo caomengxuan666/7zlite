@@ -192,19 +192,20 @@ int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
         /* Handle hard link references */
         if (info->is_hardlink && info->link_target) {
             /* This is a reference to another file in the archive */
+            int hardlink_type = ZLITE_FILETYPE_HARDLINK;
             path_len = strlen(info->path);
             fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
             fwrite(info->path, 1, path_len, archive_fp);
-            fwrite(&info->file_type, sizeof(int), 1, archive_fp);
+            fwrite(&hardlink_type, sizeof(int), 1, archive_fp);
             fwrite(&info->size, sizeof(uint64_t), 1, archive_fp);
             fwrite(&compressed_size, sizeof(uint64_t), 1, archive_fp);
             fwrite(&crc, sizeof(uint32_t), 1, archive_fp);
-            
+
             /* Store reference path */
             uint32_t target_len = strlen(info->link_target);
             fwrite(&target_len, sizeof(uint32_t), 1, archive_fp);
             fwrite(info->link_target, 1, target_len, archive_fp);
-            
+
             printf("  %s [hardlink -> %s]\n", info->path, info->link_target);
             continue;
         }

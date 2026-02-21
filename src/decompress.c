@@ -33,13 +33,13 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
     size_t inLen, outSize;
     ELzmaStatus status;
     size_t total_read;
-    
+
     /* Open input file */
     wres = InFile_Open(&inStream.file, input_path);
     if (wres != 0) {
         return ZLITE_ERROR_FILE;
     }
-    
+
     /* Open output file */
     wres = OutFile_Open(&outStream.file, output_path);
     if (wres != 0) {
@@ -88,25 +88,25 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
     
     /* Decode loop */
     total_read = 0;
-    
+
     while (total_read < input_size) {
         size_t to_read = 65536;
         if (total_read + to_read > input_size) {
             to_read = input_size - total_read;
         }
-        
+
         inLen = to_read;
         wres = File_Read(&inStream.file, inBuf, &inLen);
         if (wres != 0 || inLen == 0) {
             break;
         }
         total_read += inLen;
-        
+
         outSize = 65536;
         res = Lzma2Dec_DecodeToBuf(&dec, outBuf, &outSize,
                                    inBuf, &inLen,
                                    LZMA_FINISH_ANY, &status);
-        
+
         if (outSize > 0) {
             size_t written = outSize;
             wres = File_Write(&outStream.file, outBuf, &written);
@@ -119,22 +119,22 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
                 return ZLITE_ERROR_WRITE;
             }
         }
-        
+
         if (res != SZ_OK) {
             break;
         }
-        
+
         if (status == LZMA_STATUS_FINISHED_WITH_MARK) {
             break;
         }
     }
-    
+
     free(inBuf);
     free(outBuf);
     Lzma2Dec_Free(&dec, &g_Alloc);
     File_Close(&inStream.file);
     File_Close(&outStream.file);
-    
+
     return (res == SZ_OK) ? ZLITE_OK : ZLITE_ERROR_CORRUPT;
 }
 
@@ -334,7 +334,7 @@ int zlite_extract_files(ZliteArchive *archive, const char *output_dir) {
     uint32_t file_count;
     int i;
     CrcGenerateTable();
-    
+
     printf("Extracting to: %s\n", output_dir);
     
     fp = fopen(zlite_archive_get_path(archive), "rb");
@@ -381,7 +381,7 @@ int zlite_extract_files(ZliteArchive *archive, const char *output_dir) {
         
         /* Create output path */
         snprintf(output_path, sizeof(output_path), "%s/%s", output_dir, path);
-        
+
         /* Handle different file types */
         if (file_type == ZLITE_FILETYPE_DIR) {
             zlite_mkdir_recursive(output_path);

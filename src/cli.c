@@ -110,9 +110,16 @@ static int parse_args(int argc, char **argv, CommandLineArgs *args) {
             if (!args->archive_path) {
                 args->archive_path = argv[i];
             } else {
-                args->files = &argv[i];
-                args->num_files = argc - i;
-                break;
+                /* For extract command, if there's only one remaining argument and no -o was provided,
+                   treat it as output directory */
+                if ((args->command == ZLITE_CMD_EXTRACT || args->command == ZLITE_CMD_LIST ||
+                     args->command == ZLITE_CMD_TEST) && !args->output_dir && i == argc - 1) {
+                    args->output_dir = strdup(argv[i]);
+                } else {
+                    args->files = &argv[i];
+                    args->num_files = argc - i;
+                    break;
+                }
             }
         }
     }
