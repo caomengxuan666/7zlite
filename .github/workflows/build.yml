@@ -22,10 +22,10 @@ jobs:
         build_type: [Release]
         include:
           - os: ubuntu-latest
-            artifact_name: 7zlite-linux-amd64
+            artifact_name: 7zlite-linux-amd64-archive
             asset_name: 7zlite-linux-amd64.tar.gz
           - os: windows-latest
-            artifact_name: 7zlite-windows-amd64.exe
+            artifact_name: 7zlite-windows-amd64-archive
             asset_name: 7zlite-windows-amd64.zip
 
     steps:
@@ -102,6 +102,35 @@ jobs:
             build/Release/7zlite.exe
             build/7zlite.exe
 
+      - name: Rename Linux binary for release
+        if: runner.os == 'Linux'
+        run: |
+          mv build/7zlite build/7zlite-linux
+
+      - name: Rename Windows binary for release
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          if exist "build\Release\7zlite.exe" (
+            move build\Release\7zlite.exe build\7zlite-windows.exe
+          ) else (
+            move build\7zlite.exe build\7zlite-windows.exe
+          )
+
+      - name: Upload artifact (Linux binary renamed)
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7zlite-linux-amd64-binary-renamed
+          path: build/7zlite-linux
+
+      - name: Upload artifact (Windows binary renamed)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 7zlite-windows-amd64-binary-renamed
+          path: build/7zlite-windows.exe
+
       - name: Upload artifact (Archive)
         uses: actions/upload-artifact@v4
         with:
@@ -175,10 +204,10 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            artifacts/7zlite-linux-amd64/7zlite-linux-amd64.tar.gz
-            artifacts/7zlite-windows-amd64/7zlite-windows-amd64.zip
-            artifacts/7zlite-linux-amd64-binary/7zlite
-            artifacts/7zlite-windows-amd64-binary/7zlite.exe
+            artifacts/7zlite-linux-amd64-archive/7zlite-linux-amd64.tar.gz
+            artifacts/7zlite-windows-amd64-archive/7zlite-windows-amd64.zip
+            artifacts/7zlite-linux-amd64-binary-renamed/7zlite-linux
+            artifacts/7zlite-windows-amd64-binary-renamed/7zlite-windows.exe
             artifacts/7zlite-linux-cpack/*
             artifacts/7zlite-windows-cpack/*
           fail_on_unmatched_files: false
