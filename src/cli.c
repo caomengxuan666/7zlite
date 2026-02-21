@@ -164,6 +164,7 @@ int zlite_cli_main(int argc, char **argv) {
     int result;
     
     result = parse_args(argc, argv, &args);
+    
     if (result != ZLITE_OK) {
         print_usage();
         return 1;

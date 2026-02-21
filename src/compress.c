@@ -14,27 +14,16 @@
 #include "Lzma2Enc.h"
 #include "LzmaEnc.h"
 
-#define LZMA_PROPS_SIZE 5
+#define LZMA_PROPS_SIZE 1
 
 static ISzAlloc g_Alloc = { SzAlloc, SzFree };
-
-static size_t CFileOutStream_Write(const ISeqOutStream *pp, const void *data, size_t size) {
-    CFileOutStream *p = (CFileOutStream *)pp;
-    size_t written;
-    WRes res = File_Write(&p->file, data, &written);
-    if (res != 0) {
-        return 0;
-    }
-    return written;
-}
 
 static int compress_file_lzma2(const char *input_path, const char *output_path,
                                int level, uint64_t *compressed_size) {
     CLzma2EncHandle enc;
     CFileSeqInStream inStream;
     CFileOutStream outStream;
-    Byte props[LZMA_PROPS_SIZE];
-    size_t propsSize = LZMA_PROPS_SIZE;
+    Byte prop;
     SRes res;
     WRes wres;
     uint64_t file_size;
@@ -49,7 +38,7 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
     File_GetLength(&inStream.file, &file_size);
     
     /* Open output file */
-    wres = OutFile_Open(&outStream.file, input_path);
+    wres = OutFile_Open(&outStream.file, output_path);
     if (wres != 0) {
         File_Close(&inStream.file);
         return ZLITE_ERROR_FILE;
@@ -125,18 +114,12 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
         }
     }
     
-    /* Get encoder properties */
+    /* Get and write encoder properties */
     {
-        Byte prop = Lzma2Enc_WriteProperties(enc);
-        props[0] = prop;
-        propsSize = 1;
-    }
-    
-    /* Write properties to output */
-    {
-        size_t written = propsSize;
-        wres = File_Write(&outStream.file, props, &written);
-        if (wres != 0 || written != propsSize) {
+        prop = Lzma2Enc_WriteProperties(enc);
+        size_t written = 1;
+        wres = File_Write(&outStream.file, &prop, &written);
+        if (wres != 0 || written != 1) {
             Lzma2Enc_Destroy(enc);
             File_Close(&inStream.file);
             File_Close(&outStream.file);
@@ -149,7 +132,7 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
     
     /* Get compressed size */
     File_GetLength(&outStream.file, compressed_size);
-    *compressed_size -= propsSize;
+    *compressed_size -= 1; /* Subtract prop byte */
     
     Lzma2Enc_Destroy(enc);
     File_Close(&inStream.file);
@@ -158,12 +141,18 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
     return (res == SZ_OK) ? ZLITE_OK : ZLITE_ERROR_CORRUPT;
 }
 
+/* Simple archive header for testing */
+#define ARCHIVE_MAGIC "7z\xBC\xAF\x27\x1C"
+
 int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
                     const ZliteCompressOptions *options) {
     ZliteFileInfo *file_list;
     int file_count;
     int i;
     int result;
+    FILE *archive_fp;
+    uint64_t total_files = 0;
+    uint64_t total_size = 0;
     
     /* Collect files */
     result = zlite_collect_files(files, num_files, &file_list, &file_count);
@@ -174,56 +163,136 @@ int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
     /* Initialize CRC table */
     CrcGenerateTable();
     
-    /* Write archive header */
-    /* TODO: Implement proper 7z archive format */
+    /* Open archive file */
+    archive_fp = fopen(zlite_archive_get_path(archive), "wb");
+    if (!archive_fp) {
+        fprintf(stderr, "Error: Cannot open archive for writing\n");
+        zlite_free_file_list(file_list, file_count);
+        return ZLITE_ERROR_FILE;
+    }
+    
+    /* Write simple header */
+    fwrite(ARCHIVE_MAGIC, 1, 6, archive_fp);
+    
+    /* Write file count */
+    fwrite(&file_count, sizeof(uint32_t), 1, archive_fp);
     
     /* Process each file */
     for (i = 0; i < file_count; i++) {
         ZliteFileInfo *info = &file_list[i];
+        char temp_path[PATH_MAX];
+        uint64_t compressed_size = 0;
+        uint32_t path_len;
+        uint32_t crc = 0;
         
-        /* Skip hard link duplicates */
-        if (info->is_hardlink && info->link_target == NULL) {
-            /* This is the first occurrence of a hard link, process it */
-        } else if (info->is_hardlink && info->link_target != NULL) {
-            /* This is a duplicate hard link, skip storing data */
+        /* Handle hard link references */
+        if (info->is_hardlink && info->link_target) {
+            /* This is a reference to another file in the archive */
+            path_len = strlen(info->path);
+            fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
+            fwrite(info->path, 1, path_len, archive_fp);
+            fwrite(&info->file_type, sizeof(int), 1, archive_fp);
+            fwrite(&info->size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&compressed_size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&crc, sizeof(uint32_t), 1, archive_fp);
+            
+            /* Store reference path */
+            uint32_t target_len = strlen(info->link_target);
+            fwrite(&target_len, sizeof(uint32_t), 1, archive_fp);
+            fwrite(info->link_target, 1, target_len, archive_fp);
+            
+            printf("  %s [hardlink -> %s]\n", info->path, info->link_target);
             continue;
         }
         
-        /* Handle symlinks specially */
-        if (info->file_type == ZLITE_FILETYPE_SYMLINK) {
-            /* Write symlink info */
-            /* TODO: Implement */
-            continue;
-        }
-        
-        /* Handle directories specially */
+        /* Skip directories for now */
         if (info->file_type == ZLITE_FILETYPE_DIR) {
-            /* Write directory info */
-            /* TODO: Implement */
+            path_len = strlen(info->path);
+            fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
+            fwrite(info->path, 1, path_len, archive_fp);
+            fwrite(&info->file_type, sizeof(int), 1, archive_fp);
+            fwrite(&info->size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&compressed_size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&crc, sizeof(uint32_t), 1, archive_fp);
+            
+            printf("  %s [dir]\n", info->path);
+            continue;
+        }
+        
+        /* Handle symlinks */
+        if (info->file_type == ZLITE_FILETYPE_SYMLINK) {
+            path_len = strlen(info->path);
+            fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
+            fwrite(info->path, 1, path_len, archive_fp);
+            fwrite(&info->file_type, sizeof(int), 1, archive_fp);
+            fwrite(&info->size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&compressed_size, sizeof(uint64_t), 1, archive_fp);
+            fwrite(&crc, sizeof(uint32_t), 1, archive_fp);
+            
+            if (info->link_target) {
+                uint32_t target_len = strlen(info->link_target);
+                fwrite(&target_len, sizeof(uint32_t), 1, archive_fp);
+                fwrite(info->link_target, 1, target_len, archive_fp);
+            }
+            
+            printf("  %s [symlink -> %s]\n", info->path, info->link_target ? info->link_target : "NULL");
             continue;
         }
         
         /* Compress regular files */
-        if (info->file_type == ZLITE_FILETYPE_REGULAR || 
-            (info->is_hardlink && info->link_target == NULL)) {
-            uint64_t compressed_size;
-            char output_path[PATH_MAX];
-            snprintf(output_path, sizeof(output_path), "%s.tmp", zlite_archive_get_path(archive));
-            result = compress_file_lzma2(info->path, output_path, 
-                                         options->level, &compressed_size);
-            if (result != ZLITE_OK) {
-                fprintf(stderr, "Error compressing '%s'\n", info->path);
-                zlite_free_file_list(file_list, file_count);
-                return result;
+        snprintf(temp_path, sizeof(temp_path), "%s.tmp%06d", 
+                 zlite_archive_get_path(archive), i);
+        
+        result = compress_file_lzma2(info->path, temp_path, 
+                                     options->level, &compressed_size);
+        
+        if (result == ZLITE_OK) {
+            /* Read compressed data and write to archive */
+            FILE *compressed_fp = fopen(temp_path, "rb");
+            if (compressed_fp) {
+                Byte *buffer = malloc(compressed_size);
+                if (buffer) {
+                    size_t read_size = fread(buffer, 1, compressed_size, compressed_fp);
+                    
+                    /* Calculate CRC */
+                    crc = CrcCalc(buffer, read_size);
+                    
+                    /* Write file info */
+                    path_len = strlen(info->path);
+                    fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
+                    fwrite(info->path, 1, path_len, archive_fp);
+                    fwrite(&info->file_type, sizeof(int), 1, archive_fp);
+                    fwrite(&info->size, sizeof(uint64_t), 1, archive_fp);
+                    fwrite(&compressed_size, sizeof(uint64_t), 1, archive_fp);
+                    fwrite(&crc, sizeof(uint32_t), 1, archive_fp);
+                    
+                    /* Write compressed data */
+                    fwrite(buffer, 1, read_size, archive_fp);
+                    
+                    free(buffer);
+                    
+                    printf("  %s (%llu -> %llu bytes, %.1f%%)\n", 
+                           info->path, 
+                           (unsigned long long)info->size,
+                           (unsigned long long)compressed_size,
+                           info->size > 0 ? (compressed_size * 100.0 / info->size) : 0.0);
+                    
+                    total_files++;
+                    total_size += info->size;
+                }
+                fclose(compressed_fp);
             }
-            /* TODO: Append compressed data to archive */
-            remove(output_path);
+            remove(temp_path);
+        } else {
+            fprintf(stderr, "Error compressing '%s'\n", info->path);
         }
     }
     
+    fclose(archive_fp);
     zlite_free_file_list(file_list, file_count);
     
-    printf("Added %d files to archive\n", file_count);
+    printf("\nCompressed %d files (%llu bytes)\n", total_files, 
+           (unsigned long long)total_size);
     
     return ZLITE_OK;
 }

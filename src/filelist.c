@@ -123,31 +123,39 @@ static int filelist_add_recursive(FileList *list, const char *path,
                                                              info.inode, info.device);
         if (entry && entry->ref_count > 1 && strcmp(entry->first_path, path) != 0) {
             /* This is a duplicate hard link, just record it */
+            info.link_target = strdup(entry->first_path);  /* Store reference to first file */
             filelist_add(list, path, &info);
             return 0;
         }
+        /* First occurrence of hard link, treat as regular file */
+        info.file_type = ZLITE_FILETYPE_REGULAR;
+        info.is_hardlink = 0;
     }
     
     if (filelist_add(list, path, &info) != 0) {
-        return -1;
-    }
-    
-    /* If it's a directory, recurse */
-    if (S_ISDIR(st.st_mode)) {
-        dir = opendir(path);
-        if (!dir) {
-            return -1;
-        }
+                return -1;
+            }
         
-        while ((entry = readdir(dir)) != NULL) {
-            if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
-                continue;
+        /* If it's a directory, recurse */
+        if (S_ISDIR(st.st_mode)) {
+            dir = opendir(path);
+            if (!dir) {
+                return -1;
             }
             
-            snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
-            filelist_add_recursive(list, full_path, link_table);
-        }
-        
+            while ((entry = readdir(dir)) != NULL) {
+                if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+                    continue;
+                }
+                
+                /* Build full path, avoiding double slashes */
+                if (path[strlen(path)-1] == '/') {
+                    snprintf(full_path, sizeof(full_path), "%s%s", path, entry->d_name);
+                } else {
+                    snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+                }
+                filelist_add_recursive(list, full_path, link_table);
+            }        
         closedir(dir);
     }
     
