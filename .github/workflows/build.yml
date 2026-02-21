@@ -59,7 +59,7 @@ jobs:
         run: |
           if exist "build\Release\7zlite.exe" (
             build\Release\7zlite.exe --version
-            build\Release\zlite.exe --help
+            build\Release\7zlite.exe --help
           ) else (
             if exist "build\7zlite.exe" (
               build\7zlite.exe --version
