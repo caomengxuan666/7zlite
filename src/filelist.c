@@ -157,8 +157,87 @@ static int filelist_add_recursive(FileList *list, const char *path,
     }
     
     return 0;
+#elif defined(ZLITE_USE_WINDOWS_API)
+    /* Windows implementation using FindFirstFile/FindNextFile */
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    HANDLE hFind;
+    WIN32_FIND_DATAW findData;
+    wchar_t wpath[MAX_PATH];
+    ZliteFileInfo info;
+    char full_path[PATH_MAX];
+    char search_path[PATH_MAX];
+    wchar_t wsearch_path[MAX_PATH];
+
+    /* Convert to wide string */
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH);
+
+    /* Get file attributes */
+    if (!GetFileAttributesExW(wpath, GetFileExInfoStandard, &data)) {
+        return -1;
+    }
+
+    /* Detect links */
+    if (zlite_detect_links(path, &info) != 0) {
+        return -1;
+    }
+
+    info.size = ((uint64_t)data.nFileSizeHigh << 32) | data.nFileSizeLow;
+
+    /* Check if this is a hard link we've already processed */
+    if (info.is_hardlink) {
+        struct HardLinkEntry *entry = zlite_link_table_find_or_add(link_table, path,
+                                                             info.inode, info.device);
+        if (entry && entry->ref_count > 1 && strcmp(entry->first_path, path) != 0) {
+            /* This is a duplicate hard link, just record it */
+            info.link_target = strdup(entry->first_path);
+            filelist_add(list, path, &info);
+            return 0;
+        }
+        /* First occurrence of hard link, treat as regular file */
+        info.file_type = ZLITE_FILETYPE_REGULAR;
+        info.is_hardlink = 0;
+    }
+
+    if (filelist_add(list, path, &info) != 0) {
+        return -1;
+    }
+
+    /* If it's a directory, recurse */
+    if (info.file_type == ZLITE_FILETYPE_DIR) {
+        /* Build search path */
+        snprintf(search_path, sizeof(search_path), "%s\\*", path);
+        MultiByteToWideChar(CP_UTF8, 0, search_path, -1, wsearch_path, MAX_PATH);
+
+        hFind = FindFirstFileW(wsearch_path, &findData);
+        if (hFind == INVALID_HANDLE_VALUE) {
+            return -1;
+        }
+
+        do {
+            /* Skip . and .. */
+            if (wcscmp(findData.cFileName, L".") == 0 || wcscmp(findData.cFileName, L"..") == 0) {
+                continue;
+            }
+
+            /* Convert filename back to UTF-8 */
+            WideCharToMultiByte(CP_UTF8, 0, findData.cFileName, -1,
+                               full_path, MAX_PATH, NULL, NULL);
+
+            /* Build full path */
+            snprintf(full_path, sizeof(full_path), "%s\\%s", path, full_path);
+
+            if (filelist_add_recursive(list, full_path, link_table) != 0) {
+                FindClose(hFind);
+                return -1;
+            }
+        } while (FindNextFileW(hFind, &findData) != 0);
+
+        FindClose(hFind);
+    }
+
+    return 0;
 #else
-    /* Windows implementation would use FindFirstFile/FindNextFile */
+    /* Unknown platform */
     return -1;
 #endif
 }

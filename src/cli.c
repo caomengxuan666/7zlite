@@ -237,32 +237,32 @@ int zlite_cli_main(int argc, char **argv) {
     CommandLineArgs args;
     ZliteArchive *archive;
     int result;
-    
+
     result = parse_args(argc, argv, &args);
-    
+
     if (result != ZLITE_OK) {
         print_usage();
         return 1;
     }
-    
+
     if (args.show_help) {
         print_usage();
         return 0;
     }
-    
+
     if (args.show_version) {
         print_version();
         return 0;
     }
-    
+
     /* Open archive */
-    archive = zlite_archive_create(args.archive_path, 
+    archive = zlite_archive_create(args.archive_path,
                                    args.command == ZLITE_CMD_ADD);
     if (!archive) {
         fprintf(stderr, "Error: Cannot open archive '%s'\n", args.archive_path);
         return 1;
     }
-    
+
     /* Execute command */
     switch (args.command) {
         case ZLITE_CMD_ADD:

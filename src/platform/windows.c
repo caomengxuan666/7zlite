@@ -108,37 +108,60 @@ int zlite_platform_detect_links(const char *path, ZliteFileInfo *info) {
     ZliteFileStat stat;
     wchar_t wpath[MAX_PATH];
     DWORD attr;
-    
+    HANDLE hFile;
+    BY_HANDLE_FILE_INFORMATION file_info;
+
     MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, MAX_PATH);
-    
+
     attr = GetFileAttributesW(wpath);
     if (attr == INVALID_FILE_ATTRIBUTES) {
         return -1;
     }
-    
+
     if (zlite_stat_file(path, &stat) != 0) {
         return -1;
     }
-    
-    info->device = 0;
-    info->inode = 0;
+
+    /* Get file information to detect hard links */
+    hFile = CreateFileW(wpath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                       NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile != INVALID_HANDLE_VALUE) {
+        if (GetFileInformationByHandle(hFile, &file_info)) {
+            info->device = file_info.dwVolumeSerialNumber;
+            info->inode = ((uint64_t)file_info.nFileIndexHigh << 32) | file_info.nFileIndexLow;
+
+            /* Check if this is a hard link (more than one link) */
+            if (file_info.nNumberOfLinks > 1) {
+                info->is_hardlink = 1;
+            } else {
+                info->is_hardlink = 0;
+            }
+        } else {
+            info->device = 0;
+            info->inode = 0;
+            info->is_hardlink = 0;
+        }
+        CloseHandle(hFile);
+    } else {
+        info->device = 0;
+        info->inode = 0;
+        info->is_hardlink = 0;
+    }
+
     info->attributes = attr;
-    
+
     if (attr & FILE_ATTRIBUTE_REPARSE_POINT) {
         /* Windows symbolic link or junction */
         info->file_type = ZLITE_FILETYPE_SYMLINK;
         info->link_target = NULL;
-        info->is_hardlink = 0;
     } else if (attr & FILE_ATTRIBUTE_DIRECTORY) {
         info->file_type = ZLITE_FILETYPE_DIR;
         info->link_target = NULL;
-        info->is_hardlink = 0;
     } else {
         info->file_type = ZLITE_FILETYPE_REGULAR;
         info->link_target = NULL;
-        info->is_hardlink = 0;
     }
-    
+
     return 0;
 }
 

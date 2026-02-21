@@ -30,7 +30,7 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
     SRes res;
     WRes wres;
     uint64_t file_size;
-    
+
     /* Open input file */
     wres = InFile_Open(&inStream.file, input_path);
     if (wres != 0) {
@@ -156,16 +156,17 @@ int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
     FILE *archive_fp;
     uint64_t total_files = 0;
     uint64_t total_size = 0;
-    
+
     /* Collect files */
     result = zlite_collect_files(files, num_files, &file_list, &file_count);
+
     if (result != ZLITE_OK) {
         return result;
     }
-    
+
     /* Initialize CRC table */
     CrcGenerateTable();
-    
+
     /* Open archive file */
     archive_fp = fopen(zlite_archive_get_path(archive), "wb");
     if (!archive_fp) {
@@ -243,10 +244,10 @@ int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
         }
         
         /* Compress regular files */
-        snprintf(temp_path, sizeof(temp_path), "%s.tmp%06d", 
+        snprintf(temp_path, sizeof(temp_path), "%s.tmp%06d",
                  zlite_archive_get_path(archive), i);
-        
-        result = compress_file_lzma2(info->path, temp_path, 
+
+        result = compress_file_lzma2(info->path, temp_path,
                                      options->level, &compressed_size);
         
         if (result == ZLITE_OK) {
