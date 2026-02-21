@@ -6,7 +6,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Platform detection
 if(WIN32)
-    add_definitions(-D_USE_WINDOWS_FILE)
+    add_definitions(-D_USE_WINDOWS_FILE -D_CRT_SECURE_NO_WARNINGS -DWIN32_LEAN_AND_MEAN)
     set(PLATFORM_SRCS 
         src/platform/windows.c
     )

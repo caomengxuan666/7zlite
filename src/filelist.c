@@ -3,18 +3,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fnmatch.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
 
-#ifdef ZLITE_USE_POSIX
-    #include <unistd.h>
-    #include <sys/stat.h>
-#endif
-
-#ifdef ZLITE_USE_POSIX
+#ifdef _WIN32
+    #include <windows.h>
+#else
+    #include <fnmatch.h>
     #include <dirent.h>
     #include <sys/stat.h>
 #endif

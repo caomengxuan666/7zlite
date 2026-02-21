@@ -5,6 +5,15 @@
 #include <string.h>
 #include <windows.h>
 #include <shlwapi.h>
+
+#ifndef _S_IFDIR
+#define _S_IFDIR 0040000
+#endif
+
+#ifndef _S_IFREG
+#define _S_IFREG 0100000
+#endif
+
 #pragma comment(lib, "shlwapi.lib")
 
 int zlite_stat_file(const char *path, ZliteFileStat *stat) {

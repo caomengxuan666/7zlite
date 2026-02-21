@@ -14,7 +14,10 @@
 #include "Lzma2Enc.h"
 #include "LzmaEnc.h"
 
+/* Use LZMA SDK's LZMA_PROPS_SIZE definition if available */
+#ifndef LZMA_PROPS_SIZE
 #define LZMA_PROPS_SIZE 1
+#endif
 
 static ISzAlloc g_Alloc = { SzAlloc, SzFree };
 

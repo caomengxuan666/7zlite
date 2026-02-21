@@ -2,7 +2,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <getopt.h>
+
+#ifdef _WIN32
+    #include <windows.h>
+    #include <shellapi.h>
+#else
+    #include <getopt.h>
+#endif
 
 #define VERSION "7zLite 1.0.0"
 
@@ -52,6 +58,74 @@ typedef struct {
 } CommandLineArgs;
 
 static int parse_args(int argc, char **argv, CommandLineArgs *args) {
+#ifdef _WIN32
+    /* Windows: manual parsing */
+    int i;
+    
+    /* Initialize default values */
+    memset(args, 0, sizeof(CommandLineArgs));
+    args->compress_opts.level = ZLITE_LEVEL_DEFAULT;
+    args->compress_opts.method = ZLITE_METHOD_LZMA2;
+    args->compress_opts.solid = 1;
+    args->compress_opts.num_threads = 0;
+    args->compress_opts.volume_size = 0;
+    args->command = ZLITE_CMD_ADD;
+    
+    /* First argument should be the command */
+    if (argc < 2) {
+        return ZLITE_ERROR_PARAM;
+    }
+    
+    /* Check if it's a command */
+    if (strcmp(argv[1], "a") == 0) {
+        args->command = ZLITE_CMD_ADD;
+    } else if (strcmp(argv[1], "x") == 0) {
+        args->command = ZLITE_CMD_EXTRACT;
+    } else if (strcmp(argv[1], "e") == 0) {
+        args->command = ZLITE_CMD_EXTRACT;
+    } else if (strcmp(argv[1], "l") == 0) {
+        args->command = ZLITE_CMD_LIST;
+    } else if (strcmp(argv[1], "t") == 0) {
+        args->command = ZLITE_CMD_TEST;
+    } else if (strcmp(argv[1], "-h") == 0 || strcmp(argv[1], "--help") == 0) {
+        args->show_help = 1;
+        return ZLITE_OK;
+    } else if (strcmp(argv[1], "-V") == 0 || strcmp(argv[1], "--version") == 0) {
+        args->show_version = 1;
+        return ZLITE_OK;
+    } else {
+        return ZLITE_ERROR_PARAM;
+    }
+    
+    /* Simple parsing for options and files */
+    for (i = 2; i < argc; i++) {
+        if (argv[i][0] == '-' && argv[i][1] >= '0' && argv[i][1] <= '9') {
+            /* Compression level: -0 to -9 */
+            args->compress_opts.level = argv[i][1] - '0';
+        } else if (argv[i][0] == '-' && strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            /* Output directory */
+            args->output_dir = strdup(argv[++i]);
+        } else if (argv[i][0] != '-') {
+            /* Archive path or files */
+            if (!args->archive_path) {
+                args->archive_path = argv[i];
+            } else {
+                args->files = &argv[i];
+                args->num_files = argc - i;
+                break;
+            }
+        }
+    }
+    
+    if (!args->archive_path) {
+        fprintf(stderr, "Error: Archive path required\n");
+        return ZLITE_ERROR_PARAM;
+    }
+    
+    return ZLITE_OK;
+    
+#else
+    /* Unix/Linux: use getopt_long */
     int opt;
     int long_index = 0;
     
@@ -156,6 +230,7 @@ static int parse_args(int argc, char **argv, CommandLineArgs *args) {
     args->num_files = argc - arg_pos - 1;
     
     return ZLITE_OK;
+#endif
 }
 
 int zlite_cli_main(int argc, char **argv) {
