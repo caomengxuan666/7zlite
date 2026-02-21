@@ -3,6 +3,24 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Debug macro */
+#define DEBUG_COMPRESSION 0
+
+#if DEBUG_COMPRESSION
+#define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT(fmt, ...) do {} while(0)
+#endif
+
+/* Debug macro */
+#define DEBUG_DECOMPRESSION 1
+
+#if DEBUG_DECOMPRESSION
+#define DEBUG_PRINT(fmt, ...) printf(fmt, ##__VA_ARGS__)
+#else
+#define DEBUG_PRINT(fmt, ...) do {} while(0)
+#endif
+
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -64,6 +82,9 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
         CLzma2EncProps props2;
         Lzma2EncProps_Init(&props2);
         
+        /* Enable end mark */
+        props2.lzmaProps.writeEndMark = 1;
+        
         /* Map compression level to properties */
         switch (level) {
             case 0:
@@ -93,13 +114,9 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
                 break;
             case 7:
             case 8:
-                props2.lzmaProps.level = 9;
-                props2.lzmaProps.dictSize = 1 << 27;
-                break;
             case 9:
                 props2.lzmaProps.level = 9;
-                props2.lzmaProps.dictSize = 1 << 27;
-                props2.lzmaProps.numThreads = 2;
+                props2.lzmaProps.dictSize = 1 << 26;
                 break;
             default:
                 props2.lzmaProps.level = 5;
@@ -131,11 +148,15 @@ static int compress_file_lzma2(const char *input_path, const char *output_path,
     }
     
     /* Encode */
+    DEBUG_PRINT("DEBUG: Starting encoding...\n");
     res = Lzma2Enc_Encode2(enc, &outStream.vt, NULL, 0, &inStream.vt, NULL, 0, NULL);
+    DEBUG_PRINT("DEBUG: Encoding result: %d\n", res);
     
     /* Get compressed size */
     File_GetLength(&outStream.file, compressed_size);
+    DEBUG_PRINT("DEBUG: Compressed file size (with prop): %llu\n", (unsigned long long)*compressed_size);
     *compressed_size -= 1; /* Subtract prop byte */
+    DEBUG_PRINT("DEBUG: Compressed data size (without prop): %llu\n", (unsigned long long)*compressed_size);
     
     Lzma2Enc_Destroy(enc);
     File_Close(&inStream.file);
@@ -264,6 +285,8 @@ int zlite_add_files(ZliteArchive *archive, char **files, int num_files,
                     
                     /* Write file info */
                     path_len = strlen(info->path);
+                    DEBUG_PRINT("DEBUG: Writing file info: path=%s, size=%llu, compressed_size=%llu\n",
+                               info->path, (unsigned long long)info->size, (unsigned long long)compressed_size);
                     fwrite(&path_len, sizeof(uint32_t), 1, archive_fp);
                     fwrite(info->path, 1, path_len, archive_fp);
                     fwrite(&info->file_type, sizeof(int), 1, archive_fp);
