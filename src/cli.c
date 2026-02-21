@@ -10,7 +10,7 @@
     #include <getopt.h>
 #endif
 
-#define VERSION "7zLite 1.0.0"
+#define VERSION "7zLite 1.0.1.2"
 
 static void print_usage(void) {
     printf("7zLite - A lightweight 7z archive tool with link support\n\n");
