@@ -4,6 +4,17 @@ project(7zlite VERSION 1.0.0 LANGUAGES C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Binary size optimization
+# Strip debug symbols to reduce size
+set(CMAKE_INTERPROCEDURAL_OPTIMIZATION FALSE)
+set(CMAKE_SKIP_BUILD_RPATH TRUE)
+set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
+
+# Reduce binary size by removing unused sections
+if(NOT MSVC)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--as-needed")
+endif()
+
 # CPACK configuration
 set(CPACK_PACKAGE_NAME "7zlite")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
@@ -25,7 +36,8 @@ else()
     set(PLATFORM_LIBS pthread)
 endif()
 
-# LZMA SDK source files
+# LZMA SDK source files (minimal set for 7z LZMA2 compression/decompression)
+# Removed: Xz* (XZ format), Lzma86* (LZMA86 format), BraIA64 (IA64)
 set(LZMA_SRCS
     C/7zAlloc.c
     C/7zArcIn.c
@@ -43,7 +55,6 @@ set(LZMA_SRCS
     C/Bcj2Enc.c
     C/Bra.c
     C/Bra86.c
-    C/BraIA64.c
     C/CpuArch.c
     C/Delta.c
     C/LzFind.c
@@ -52,8 +63,6 @@ set(LZMA_SRCS
     C/Lzma2Dec.c
     C/Lzma2DecMt.c
     C/Lzma2Enc.c
-    C/Lzma86Dec.c
-    C/Lzma86Enc.c
     C/LzmaDec.c
     C/LzmaEnc.c
     C/MtCoder.c
@@ -66,12 +75,6 @@ set(LZMA_SRCS
     C/Sort.c
     C/SwapBytes.c
     C/Threads.c
-    C/Xz.c
-    C/XzCrc64.c
-    C/XzCrc64Opt.c
-    C/XzDec.c
-    C/XzEnc.c
-    C/XzIn.c
 )
 
 # 7zLite source files
@@ -95,10 +98,21 @@ include_directories(
 # Create executable
 add_executable(7zlite ${ZLITE_SRCS} ${LZMA_SRCS})
 
+# Linker optimization for smaller binary size
+set_target_properties(7zlite PROPERTIES
+    LINK_FLAGS "-Wl,--gc-sections"
+)
+
 if(NOT WIN32)
     target_link_libraries(7zlite ${PLATFORM_LIBS})
+    # Static linking preference for smaller dependencies
+    set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
 else()
     target_link_libraries(7zlite shlwapi)
+    # Enable function-level linking on Windows
+    set_target_properties(7zlite PROPERTIES
+        LINK_FLAGS "/OPT:REF /OPT:ICF"
+    )
 endif()
 
 # Set compiler warnings
@@ -130,7 +144,9 @@ if(UNIX AND NOT APPLE)
     set(CPACK_RPM_PACKAGE_LICENSE "Public Domain")
     set(CPACK_RPM_PACKAGE_GROUP "Applications/Archiving")
     set(CPACK_PACKAGE_EXECUTABLES ${CMAKE_INSTALL_PREFIX}/bin)
-    install(TARGETS 7zlite DESTINATION bin)
+    # Strip debug symbols to reduce size
+    install(TARGETS 7zlite DESTINATION bin COMPONENT binary)
+    install(CODE "execute_process(COMMAND ${CMAKE_STRIP} \$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/bin/7zlite)")
 endif()
 
 # Windows-specific CPACK settings
@@ -140,7 +156,13 @@ if(WIN32)
     set(CPACK_NSIS_PACKAGE_NAME "7zLite")
     set(CPACK_NSIS_CONTACT "7zLite Project")
     set(CPACK_NSIS_URL_INFO_ABOUT "https://github.com/caomengxuan666/7zlite")
-    install(TARGETS 7zlite DESTINATION .)
+    # Strip debug symbols on Windows (if strip is available)
+    install(TARGETS 7zlite DESTINATION . COMPONENT binary)
+    install(CODE "
+        if(CMAKE_STRIP)
+            execute_process(COMMAND \${CMAKE_STRIP} --strip-all \${CMAKE_INSTALL_PREFIX}/7zlite.exe)
+        endif()
+    ")
 endif()
 
 include(CPack)
