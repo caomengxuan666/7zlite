@@ -99,6 +99,7 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
     
     /* Decode loop - using DecodeToDic with default dictionary */
     total_read = 0;
+    size_t total_written = 0;
     bool finished = false;
     
     /* Don't set custom dictionary buffer, let decoder use its internal buffer */
@@ -120,14 +121,15 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
         
         /* Decode to dictionary with limit */
         size_t inProcessed = srcLen;
+        size_t dicPosBefore = dec.decoder.dicPos;
         
         res = Lzma2Dec_DecodeToDic(&dec, output_size, inBuf, &inProcessed, LZMA_FINISH_END, &status);
         
-        /* Write output from dictionary */
-        if (dec.decoder.dicPos > 0) {
-            size_t written = dec.decoder.dicPos;
-            wres = File_Write(&outStream.file, dec.decoder.dic, &written);
-            if (wres != 0 || written != dec.decoder.dicPos) {
+        /* Write only newly decoded data */
+        if (dec.decoder.dicPos > dicPosBefore) {
+            size_t newly_decoded = dec.decoder.dicPos - dicPosBefore;
+            wres = File_Write(&outStream.file, dec.decoder.dic + dicPosBefore, &newly_decoded);
+            if (wres != 0 || newly_decoded != (dec.decoder.dicPos - dicPosBefore)) {
                 free(inBuf);
                 free(outBuf);
                 Lzma2Dec_Free(&dec, &g_Alloc);
@@ -135,6 +137,7 @@ static int decompress_file_lzma2(const char *input_path, const char *output_path
                 File_Close(&outStream.file);
                 return ZLITE_ERROR_WRITE;
             }
+            total_written += newly_decoded;
         }
         
         /* Check for completion */
