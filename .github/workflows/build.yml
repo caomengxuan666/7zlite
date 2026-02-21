@@ -1,0 +1,119 @@
+name: Build and Release
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        build_type: [Release]
+        include:
+          - os: ubuntu-latest
+            artifact_name: 7zlite-linux-amd64
+            asset_name: 7zlite-linux-amd64.tar.gz
+          - os: windows-latest
+            artifact_name: 7zlite-windows-amd64.exe
+            asset_name: 7zlite-windows-amd64.zip
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+
+      - name: Build
+        run: |
+          cmake --build build --config ${{ matrix.build_type }} --parallel
+
+      - name: Run tests (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          cd build
+          ./7zlite --version
+          ./7zlite --help
+
+      - name: Run tests (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd build
+          ./7zlite.exe --version
+          ./7zlite.exe --help
+        shell: cmd
+
+      - name: Package (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          cd build
+          tar -czf ../${{ matrix.asset_name }} 7zlite
+          mv ../${{ matrix.asset_name }} .
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          if exist "build\Release\7zlite.exe" (
+            cd build\Release
+            7z a ..\..\${{ matrix.asset_name }} 7zlite.exe
+            cd ..\..
+          ) else if exist "build\7zlite.exe" (
+            cd build
+            7z a ..\${{ matrix.asset_name }} 7zlite.exe
+            cd ..
+          ) else (
+            echo "7zlite.exe not found"
+            dir build
+            dir build\Release
+            exit 1
+          )
+        shell: cmd
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.asset_name }}
+
+  release:
+    name: Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release' && github.event.action == 'published'
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Display structure of downloaded files
+        run: ls -R artifacts
+
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/7zlite-linux-amd64/7zlite-linux-amd64.tar.gz
+            artifacts/7zlite-windows-amd64/7zlite-windows-amd64.zip
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
