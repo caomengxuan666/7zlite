@@ -11,7 +11,8 @@ set(CMAKE_SKIP_BUILD_RPATH TRUE)
 set(CMAKE_BUILD_RPATH_USE_ORIGIN TRUE)
 
 # Reduce binary size by removing unused sections
-if(NOT MSVC)
+# Only add --as-needed on non-Windows platforms
+if(NOT WIN32)
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--as-needed")
 endif()
 
@@ -98,21 +99,46 @@ include_directories(
 # Create executable
 add_executable(7zlite ${ZLITE_SRCS} ${LZMA_SRCS})
 
-# Linker optimization for smaller binary size
-set_target_properties(7zlite PROPERTIES
-    LINK_FLAGS "-Wl,--gc-sections"
-)
-
-if(NOT WIN32)
+# Compiler detection
+if(WIN32)
+    target_link_libraries(7zlite shlwapi)
+    
+    # Detect compiler type on Windows
+    if(CMAKE_C_COMPILER_ID MATCHES "MSVC")
+        # MSVC compiler - use MSVC linker flags
+        set_target_properties(7zlite PROPERTIES
+            LINK_FLAGS "/OPT:REF /OPT:ICF"
+        )
+    elseif(CMAKE_C_COMPILER_ID MATCHES "Clang")
+        # Clang compiler on Windows - use MSVC-compatible flags via -Xlinker
+        # because lld-link is used on Windows
+        set_target_properties(7zlite PROPERTIES
+            LINK_FLAGS "-Xlinker /OPT:REF -Xlinker /OPT:ICF"
+        )
+    elseif(CMAKE_C_COMPILER_ID MATCHES "GNU")
+        # GCC compiler on Windows - use GNU linker flags
+        set_target_properties(7zlite PROPERTIES
+            LINK_FLAGS "-Wl,--gc-sections"
+        )
+    else()
+        # Unknown compiler - try generic GNU flags
+        set_target_properties(7zlite PROPERTIES
+            LINK_FLAGS "-Wl,--gc-sections"
+        )
+    endif()
+else()
+    # Non-Windows platforms (Linux, macOS, etc.)
     target_link_libraries(7zlite ${PLATFORM_LIBS})
+    
+    # Linker optimization for smaller binary size
+    if(CMAKE_C_COMPILER_ID MATCHES "Clang" OR CMAKE_C_COMPILER_ID MATCHES "GNU")
+        set_target_properties(7zlite PROPERTIES
+            LINK_FLAGS "-Wl,--as-needed -Wl,--gc-sections"
+        )
+    endif()
+    
     # Static linking preference for smaller dependencies
     set(CMAKE_FIND_LIBRARY_SUFFIXES .a ${CMAKE_FIND_LIBRARY_SUFFIXES})
-else()
-    target_link_libraries(7zlite shlwapi)
-    # Enable function-level linking on Windows
-    set_target_properties(7zlite PROPERTIES
-        LINK_FLAGS "/OPT:REF /OPT:ICF"
-    )
 endif()
 
 # Set compiler warnings

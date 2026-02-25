@@ -220,11 +220,12 @@ static int filelist_add_recursive(FileList *list, const char *path,
             }
 
             /* Convert filename back to UTF-8 */
+            char filename[MAX_PATH];
             WideCharToMultiByte(CP_UTF8, 0, findData.cFileName, -1,
-                               full_path, MAX_PATH, NULL, NULL);
+                               filename, MAX_PATH, NULL, NULL);
 
             /* Build full path */
-            snprintf(full_path, sizeof(full_path), "%s\\%s", path, full_path);
+            snprintf(full_path, sizeof(full_path), "%s\\%s", path, filename);
 
             if (filelist_add_recursive(list, full_path, link_table) != 0) {
                 FindClose(hFind);
