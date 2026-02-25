@@ -103,8 +103,11 @@ static int parse_args(int argc, char **argv, CommandLineArgs *args) {
             /* Compression level: -0 to -9 */
             args->compress_opts.level = argv[i][1] - '0';
         } else if (argv[i][0] == '-' && strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-            /* Output directory */
+            /* Output directory: -o path */
             args->output_dir = strdup(argv[++i]);
+        } else if (argv[i][0] == '-' && argv[i][1] == 'o' && argv[i][2] != '\0') {
+            /* Output directory: -opath */
+            args->output_dir = strdup(argv[i] + 2);
         } else if (argv[i][0] != '-') {
             /* Archive path or files */
             if (!args->archive_path) {
